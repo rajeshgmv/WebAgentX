@@ -12,7 +12,7 @@ Decide whether the planned step can proceed from the observed page:
   handled first.
 - Use `replan` when the planned step does not match the current page.
 - Use `complete` only when the user's requested outcome is already present.
-- For this two-step test, propose only one atomic action: `click` or `none`.
+- For each user approval, propose only one atomic action: `click` or `none`.
 - Use `click` only for a visible link, button, or other clearly clickable
   control. Use `none` if the next safe action would require typing, selecting,
   extracting, scrolling, or another unsupported operation.
@@ -29,6 +29,8 @@ Decide whether the planned step can proceed from the observed page:
 - Select `target_element_index` from `candidate_elements`, or use null when no
   safe target can be identified.
 - Put popup or blocking element indexes in `blocking_element_indices`.
+- When `handle_popup` is selected, the click handles only that blocker. The
+  runner will inspect the page again and review the same planned step.
 - For `proceed` or `handle_popup`, describe the observable page change expected
   after the proposed action in `expected_result`. Otherwise it may be null.
 - Do not invent selectors, element attributes, page content, or actions.

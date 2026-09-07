@@ -531,10 +531,15 @@ def run_next_step(
     page_changed = _observation_signature(
         pre_action_snapshot.observation
     ) != _observation_signature(post_action_snapshot.observation)
+    review_step = (
+        planned_step
+        if confirmation.decision == "handle_popup"
+        else plan.steps[step_index + 1]
+    )
     try:
         next_confirmation = confirm_next_step(
             plan,
-            plan.steps[step_index + 1],
+            review_step,
             post_action_snapshot,
             api_key=api_key,
         )
@@ -543,7 +548,7 @@ def run_next_step(
         # so the UI can retry only the LLM review instead of clicking twice.
         logger.exception(
             "Could not prepare confirmation for step %s",
-            plan.steps[step_index + 1].step_number,
+            review_step.step_number,
         )
         next_confirmation = None
 

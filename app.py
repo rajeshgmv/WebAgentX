@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 
-from identifysteps import StepPlan, identify_steps, is_valid_http_url
+from identifysteps import Step, StepPlan, identify_steps, is_valid_http_url
 from runsteps import (
     FirstStepRunResult,
     NextStepConfirmation,
@@ -94,6 +94,7 @@ def display_first_step_result(result: FirstStepRunResult) -> None:
             )
         else:
             st.info("No visible interactive elements were found on this page.")
+
 
 def display_step_result(result: StepRunResult) -> None:
     """Render one executed plan step and its fresh page observation."""
@@ -195,7 +196,96 @@ def display_confirmation(
         st.json(confirmation.model_dump())
 
 
-STATE_SCHEMA_VERSION = 4
+def step_after_action(plan: StepPlan, result: StepRunResult) -> Step:
+    """Return the plan step that must be reviewed after an executed action."""
+    if result.confirmation.decision == "handle_popup":
+        return result.planned_step
+    return plan.steps[result.planned_step.step_number]
+
+
+def step_for_confirmation(
+    plan: StepPlan,
+    confirmation: NextStepConfirmation,
+) -> Step | None:
+    """Resolve a model confirmation to a validated plan step."""
+    step_number = confirmation.planned_step_number
+    if step_number is None or not 1 <= step_number <= len(plan.steps):
+        return None
+    return plan.steps[step_number - 1]
+
+
+def offer_step_execution(
+    plan: StepPlan,
+    snapshot: PageSnapshot,
+    confirmation: NextStepConfirmation,
+    api_key: str | None,
+    execution_count: int,
+) -> None:
+    """Display and, after explicit approval, execute the current proposal."""
+    current_step = step_for_confirmation(plan, confirmation)
+    if current_step is None:
+        st.error("❌ Groq returned a step that is not present in the plan.")
+        return
+
+    is_final_step = current_step == plan.steps[-1]
+    display_confirmation(
+        confirmation,
+        snapshot,
+        is_final_step=is_final_step,
+    )
+
+    can_execute = (
+        not is_final_step
+        and confirmation.decision in {"proceed", "handle_popup"}
+        and confirmation.action_type == "click"
+        and confirmation.target_element_index is not None
+    )
+    if not can_execute:
+        if not is_final_step:
+            st.info(
+                f"Step {current_step.step_number} cannot be executed by the "
+                "current click-only runner. No browser action was taken."
+            )
+        return
+
+    execute_clicked = st.button(
+        f"🖱️ Approve & Execute Step {current_step.step_number}",
+        width="stretch",
+        type="primary",
+        key=f"execute_step_{execution_count}",
+    )
+    if not execute_clicked:
+        return
+
+    driver = st.session_state.get("browser_driver")
+    if driver is None:
+        st.error("❌ The browser session is no longer available.")
+        return
+    if not api_key:
+        st.error("❌ A Groq API key is required to prepare the following step.")
+        return
+
+    with st.spinner(f"🖱️ Executing step {current_step.step_number}..."):
+        try:
+            result = run_next_step(
+                driver=driver,
+                plan=plan,
+                planned_step=current_step,
+                pre_action_snapshot=snapshot,
+                confirmation=confirmation,
+                api_key=api_key,
+            )
+            st.session_state.step_results.append(result)
+            st.rerun()
+        except Exception:
+            logger.exception("Plan-step browser execution failed")
+            st.error(
+                f"❌ Step {current_step.step_number} could not be executed safely. "
+                "The browser was left open for inspection."
+            )
+
+
+STATE_SCHEMA_VERSION = 5
 if st.session_state.get("state_schema_version") != STATE_SCHEMA_VERSION:
     close_browser_session()
     st.session_state.step_plan = None
@@ -306,8 +396,9 @@ if plan is not None:
 
     st.subheader("▶️ Execute Plan")
     st.caption(
-        "Perform Steps executes step 1 and proposes one atomic click for step 2. "
-        "Review that proposal before approving the second action."
+        "Start by navigating with step 1. Then approve one browser action at a "
+        "time. A fresh page snapshot and confirmation are generated after every "
+        "action, and automatic execution stops before the final plan step."
     )
 
     perform_column, close_column = st.columns([2, 1])
@@ -357,51 +448,62 @@ if plan is not None:
     if first_step_result is not None:
         display_first_step_result(first_step_result)
 
-        confirmation = first_step_result.confirmation
-        can_execute_step_two = (
-            confirmation.decision in {"proceed", "handle_popup"}
-            and confirmation.action_type == "click"
-            and confirmation.target_element_index is not None
-        )
+        step_results: list[StepRunResult] = st.session_state.step_results
+        for result in step_results:
+            with st.expander(
+                f"Executed action for step {result.planned_step.step_number}",
+                expanded=result is step_results[-1],
+            ):
+                display_step_result(result)
 
-        if can_execute_step_two:
-            execute_second_clicked = st.button(
-                "🖱️ Approve & Execute Step 2",
-                width="stretch",
-                type="primary",
-                disabled=st.session_state.second_step_result is not None,
-            )
+        if step_results:
+            latest_result = step_results[-1]
+            current_snapshot = latest_result.post_action_snapshot
+            current_confirmation = latest_result.next_confirmation
 
-            if execute_second_clicked:
-                driver = st.session_state.get("browser_driver")
-                if driver is None:
-                    st.error("❌ The browser session is no longer available.")
-                elif not api_key:
-                    st.error("❌ A Groq API key is required for stale-page recovery.")
-                else:
-                    with st.spinner("🖱️ Executing one approved click..."):
-                        try:
-                            st.session_state.second_step_result = run_second_step(
-                                driver=driver,
-                                plan=plan,
-                                first_step_result=first_step_result,
-                                api_key=api_key,
-                            )
-                        except Exception:
-                            logger.exception("Second-step browser execution failed")
-                            st.error(
-                                "❌ Step 2 could not be executed safely. The browser "
-                                "was left open for inspection."
-                            )
+            if current_confirmation is None:
+                retry_step = step_after_action(plan, latest_result)
+                st.warning(
+                    f"The browser action completed, but confirmation for step "
+                    f"{retry_step.step_number} failed. Retry the confirmation; "
+                    "the previous element will not be clicked again."
+                )
+                retry_clicked = st.button(
+                    f"🔄 Retry Confirmation for Step {retry_step.step_number}",
+                    width="stretch",
+                    type="primary",
+                )
+                if retry_clicked:
+                    if not api_key:
+                        st.error("❌ A Groq API key is required for confirmation.")
+                    else:
+                        with st.spinner("🧠 Reviewing the latest page snapshot..."):
+                            try:
+                                latest_result.next_confirmation = confirm_next_step(
+                                    plan,
+                                    retry_step,
+                                    current_snapshot,
+                                    api_key=api_key,
+                                )
+                                st.rerun()
+                            except Exception:
+                                logger.exception("Next-step confirmation retry failed")
+                                st.error(
+                                    "❌ Confirmation failed again. The browser was "
+                                    "left unchanged."
+                                )
         else:
-            st.info(
-                "Step 2 was not offered for execution because Groq did not return "
-                "an authorized click action."
-            )
+            current_confirmation = first_step_result.confirmation
+            current_snapshot = first_step_result.snapshot
 
-    second_step_result = st.session_state.second_step_result
-    if second_step_result is not None:
-        display_second_step_result(second_step_result)
+        if current_confirmation is not None:
+            offer_step_execution(
+                plan,
+                current_snapshot,
+                current_confirmation,
+                api_key,
+                len(step_results),
+            )
 
 st.divider()
 st.markdown(
