@@ -8,12 +8,20 @@ LangGraph's remote Mermaid rendering service.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import cast
 
 from selenium.webdriver.remote.webdriver import WebDriver
 
-from graphflow import BrowserRuntime, build_browser_graph
+# This file is a standalone utility, not part of an installed Python package.
+# Resolve imports relative to the file so it works from the repository root,
+# this directory, or any other current working directory.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from src.graphflow import BrowserRuntime, build_browser_graph
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,8 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("browser_flow.mmd"),
-        help="Mermaid output path (default: browser_flow.mmd).",
+        default=Path(__file__).with_name("browser_flow.mmd"),
+        help=(
+            "Mermaid output path (default: browser_flow.mmd next to this "
+            "script)."
+        ),
     )
     parser.add_argument(
         "--png",

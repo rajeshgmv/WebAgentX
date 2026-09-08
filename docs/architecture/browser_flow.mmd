@@ -7,39 +7,37 @@ graph TD;
 	__start__([<p>__start__</p>]):::first
 	navigate(navigate)
 	decide(decide)
-	review_action(review_action)
+	replan(replan)
+	review_transition(review_transition)
 	execute_tool(execute_tool)
+	recover_page(recover_page)
 	request_input(request_input)
 	resolve_input(resolve_input)
 	review_input_resolution(review_input_resolution)
-	review_advance(review_advance)
 	advance_step(advance_step)
-	review_final(review_final)
 	extract_final(extract_final)
-	review_blocked(review_blocked)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> navigate;
 	advance_step --> decide;
+	decide -.-> replan;
 	decide -.-> request_input;
-	decide -.-> review_action;
-	decide -.-> review_advance;
-	decide -.-> review_blocked;
-	decide -.-> review_final;
-	execute_tool --> decide;
+	decide -.-> review_transition;
+	execute_tool -.-> decide;
+	execute_tool -.-> recover_page;
 	navigate --> decide;
+	recover_page --> decide;
+	replan --> decide;
 	request_input -. &nbsp;end&nbsp; .-> __end__;
 	request_input -.-> resolve_input;
 	resolve_input --> review_input_resolution;
-	review_action -. &nbsp;end&nbsp; .-> __end__;
-	review_action -.-> execute_tool;
-	review_advance -. &nbsp;end&nbsp; .-> __end__;
-	review_advance -.-> advance_step;
-	review_blocked -. &nbsp;end&nbsp; .-> __end__;
-	review_blocked -.-> decide;
-	review_final -. &nbsp;end&nbsp; .-> __end__;
-	review_final -.-> extract_final;
 	review_input_resolution -. &nbsp;end&nbsp; .-> __end__;
-	review_input_resolution -.-> review_action;
+	review_input_resolution -.-> review_transition;
+	review_transition -. &nbsp;end&nbsp; .-> __end__;
+	review_transition -.-> advance_step;
+	review_transition -.-> decide;
+	review_transition -.-> execute_tool;
+	review_transition -.-> extract_final;
+	review_transition -.-> recover_page;
 	extract_final --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
