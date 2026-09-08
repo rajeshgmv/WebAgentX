@@ -8,6 +8,14 @@ Rewrite the request as a clear, goal-oriented outcome:
 
 - Preserve every supplied name, date, quantity, location, filter, constraint,
   and requested result.
+- Put every explicit value that could be entered or selected on the page into
+  `provided_inputs` as its own label/value object. Copy each value exactly from
+  the original request. Use semantic labels such as person name, location,
+  date, quantity, category, or identifier; the schema is domain-neutral.
+- Keep distinct values separate. Never combine a name, location, date, or other
+  constraint into one `provided_inputs` value.
+- Do not treat action verbs or requested output descriptions as provided input
+  values. Use an empty list when the request contains no explicit control value.
 - Correct spelling and grammar without changing meaning.
 - Describe what the user wants to accomplish, not how a website should do it.
 - Treat verbs such as search, find, locate, open, browse, and submit as
@@ -26,3 +34,11 @@ Original request: "search dr Swapna and provide details"
 
 Normalized outcome: "Locate a doctor named Swapna on the specified website and
 return the  details shown for the matching doctor."
+
+Provided inputs: `[{"label": "person name", "value": "Swapna"}]`
+
+Original request: "find dr Sapna and give me details. location is Milwaukee"
+
+Provided inputs:
+`[{"label": "person name", "value": "Sapna"},
+{"label": "location", "value": "Milwaukee"}]`

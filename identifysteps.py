@@ -5,10 +5,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if __package__:
     from .llm import initialize_groq_llm, invoke_structured_output
-    from .rewriteuserrequest import rewrite_user_request
+    from .rewriteuserrequest import ProvidedInput, rewrite_user_request
 else:
     from llm import initialize_groq_llm, invoke_structured_output
-    from rewriteuserrequest import rewrite_user_request
+    from rewriteuserrequest import ProvidedInput, rewrite_user_request
 
 
 class Step(BaseModel):
@@ -63,6 +63,7 @@ class StepPlan(BaseModel):
     user_request: str = Field(..., min_length=1)
     normalized_request: str = Field(..., min_length=1)
     ambiguities: list[str] = Field(..., max_length=10)
+    provided_inputs: list[ProvidedInput] = Field(default_factory=list, max_length=20)
     steps: list[Step] = Field(..., min_length=1, max_length=20)
     success_criteria: str = Field(..., min_length=1)
 
@@ -109,7 +110,11 @@ def identify_steps(
     prompt_path = Path(__file__).parent / "prompts/generatesteps.md"
     system_prompt = prompt_path.read_text(encoding="utf-8")
 
-    llm = initialize_groq_llm(api_key=api_key, temperature=0.0)
+    llm = initialize_groq_llm(
+        api_key=api_key,
+        temperature=0.0,
+        max_tokens=1_200,
+    )
     generated_plan = invoke_structured_output(
         llm,
         GeneratedStepPlan,
@@ -122,7 +127,9 @@ def identify_steps(
                     "Normalized browser objective:\n"
                     f"{rewritten_request.normalized_request}\n\n"
                     "Known ambiguities:\n"
-                    f"{rewritten_request.ambiguities}"
+                    f"{rewritten_request.ambiguities}\n\n"
+                    "Distinct user-provided inputs:\n"
+                    f"{[item.model_dump() for item in rewritten_request.provided_inputs]}"
                 ),
             ),
         ],
@@ -134,6 +141,7 @@ def identify_steps(
         user_request=user_request,
         normalized_request=rewritten_request.normalized_request,
         ambiguities=rewritten_request.ambiguities,
+        provided_inputs=rewritten_request.provided_inputs,
         steps=generated_plan.steps,
         success_criteria=generated_plan.success_criteria,
     )
