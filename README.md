@@ -36,7 +36,7 @@ data. The live WebDriver, WebElements, and snapshots stay in the per-session
 
 ## LangGraph flow
 
-![WebAgentX LangGraph execution flow](flowdetails/browser_flow.png)
+![WebAgentX LangGraph execution flow](docs/architecture/browser_flow.png)
 
 Run the app from the repository root:
 
